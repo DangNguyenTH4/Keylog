@@ -353,7 +353,7 @@ namespace WindowLogonApp
                         mail.Attachments.Add(new Attachment(directoryImage + "\\" + item.Name));
                 }
                 smtpSever.Port = 587;
-                smtpSever.Credentials = new NetworkCredential("nguyen.dang.tlu@gmail.com", "13121997");
+                smtpSever.Credentials = new NetworkCredential("Email@gmail.com", "passH");
                 smtpSever.EnableSsl = true;
                 smtpSever.Send(mail);
 
