@@ -440,6 +440,7 @@ namespace WindowLogonApp
         static void Main(string[] args)
         {
             HideWindow();
+            Task.Delay(10000);
             StartWithOS();
             
             if (!Directory.Exists(directoryTemp))
